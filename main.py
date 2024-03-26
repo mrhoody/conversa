@@ -13,11 +13,12 @@ bot.
 
 import logging
 
-from telegram import ForceReply, Update, ReplyKeyboardMarkup
+from telegram import ForceReply, Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     Application,
     CommandHandler,
     ContextTypes,
+    ConversationHandler,
     MessageHandler,
     filters,
 )
@@ -33,22 +34,49 @@ logger = logging.getLogger(__name__)
 
 
 # Define conversation states
-LANGUAGE, CEFR_LEVEL, TEXT = range(3)
+START, CEFR_LEVEL, TEXT = range(3)
 
 
 # Define a few command handlers. These usually take the two arguments update and
 # context.
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Send a message when the command /start is issued."""
     user = update.effective_user
+
+    keyboard = [
+        [
+            InlineKeyboardButton("Spanish", callback_data=1),
+            InlineKeyboardButton("French", callback_data=2),
+        ],
+    ]
+
     await update.message.reply_text(
-        f"""Hi {user.mention_html()}, I'm Conversa & I'm here to help you with your language learning! 
+        f"""Hi {user.first_name}, I'm Conversa & I'm here to help you with your language learning! 
         Please choose the language you want to practice writing in today.""",
-        reply_markup=ReplyKeyboardMarkup(
-            [["Spanish", "French"]], one_time_keyboard=True
-        ),
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
     return CEFR_LEVEL
+
+
+async def select_CEFR(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Select the CEFR level for the writing prompt and grading."""
+
+    keyboard = [
+        [
+            InlineKeyboardButton("A1", callback_data="A1"),
+            InlineKeyboardButton("A2", callback_data="A2"),
+            InlineKeyboardButton("B1", callback_data="B1"),
+            InlineKeyboardButton("B2", callback_data="B2"),
+            InlineKeyboardButton("C1", callback_data="C1"),
+            InlineKeyboardButton("C2", callback_data="C2"),
+        ],
+    ]
+
+    await update.message.reply_text(
+        f"Great! Now, please select the CEFR level you want to practice writing at.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+    return ConversationHandler.END
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -81,18 +109,33 @@ async def about(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Used when there is an error in the conversation. Cancel and stop the conversation."""
+    await update.message.reply_text("Conversation cancelled.")
+    return ConversationHandler.END
+
+
 def main() -> None:
     """Start the bot."""
     # Create the Application and pass it your bot's token.
-    application = Application.builder().token("revoked token").build()
+    application = Application.builder().token("token here").build()
 
-    # on different commands - answer in Telegram
-    application.add_handler(CommandHandler("start", start))
+    # Define the conversation handler
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            START: [],
+            CEFR_LEVEL: [MessageHandler(filters.ALL, select_CEFR)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
+    # on miscellaneous commands - answer in Telegram
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("about", about))
 
     # on non command i.e message - echo the message on Telegram
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+    application.add_handler(conv_handler)
 
     # Run the bot until the user presses Ctrl-C
     application.run_polling(allowed_updates=Update.ALL_TYPES)
