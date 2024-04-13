@@ -13,11 +13,12 @@ bot.
 
 import logging
 
-from telegram import ForceReply, Update, ReplyKeyboardMarkup
+from telegram import ForceReply, Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
     Application,
     CommandHandler,
     ContextTypes,
+    ConversationHandler,
     MessageHandler,
     filters,
 )
@@ -33,66 +34,113 @@ logger = logging.getLogger(__name__)
 
 
 # Define conversation states
-LANGUAGE, CEFR_LEVEL, TEXT = range(3)
+SELECT_LANGUAGE, SELECT_CEFR_LEVEL, INPUT_USER_TEXT, GRADE_INPUT_TEXT = range(4)
 
 
 # Define a few command handlers. These usually take the two arguments update and
 # context.
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send a message when the command /start is issued."""
-    user = update.effective_user
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Initiate the main conversation flow when the command /start is issued."""
     await update.message.reply_text(
-        f"""Hi {user.mention_html()}, I'm Conversa & I'm here to help you with your language learning! 
-        Please choose the language you want to practice writing in today.""",
+        f"""Hi {update.effective_user.first_name}, I'm Conversa & I'm here to help you with your language learning!"""
+    )
+
+    await update.message.reply_text(
+        f"""Please choose the language you want to practice writing in.""",
         reply_markup=ReplyKeyboardMarkup(
-            [["Spanish", "French"]], one_time_keyboard=True
+            [["Spanish", "French"]],
+            one_time_keyboard=True,
+            input_field_placeholder="Pick your language.",
         ),
     )
-    return CEFR_LEVEL
+    return SELECT_LANGUAGE
+
+
+async def select_CEFR_level(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    text = update.message.text
+
+    await update.message.reply_text(
+        f"""You've picked {text}. Please choose the CEFR level you want to be assessed at.""",
+        reply_markup=ReplyKeyboardMarkup(
+            [["A1", "A2", "B1"], ["B2", "C1", "C2"]],
+            one_time_keyboard=True,
+            input_field_placeholder="Pick a CEFR level.",
+        ),
+    )
+    return SELECT_CEFR_LEVEL
+
+
+async def issue_writing_prompt(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    # TODO: Fetch prompt from service
+
+    return
+
+
+async def input_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Echo the user message."""
+    await update.message.reply_text(
+        "I'm sorry, I don't understand that command. Please use /help to see the list of commands."
+    )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /help is issued."""
     await update.message.reply_text(
         """
-        Use the following commands to interact with me:\n
-        /start - Start the bot\n
-        /write - Get a writing prompt for Spanish or French at a desired CEFR level and get feedback on your text\n
+    Use the following commands to interact with me:
+    /start - Start the bot.
+    /write - Get a writing prompt for Spanish or French at a desired CEFR level and get feedback on your text.
         """
     )
-
-
-async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Echo the user message."""
-    # await update.message.reply_text(
-    #     "I'm sorry, I don't understand that command. Please use /help to see the list of commands."
-    # )
-    await update.reply_mark
 
 
 async def about(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Give more information about Conversa to users."""
     await update.message.reply_text(
         """
-        Conversa is your friendly language teacher! 
-        It'll give you a hand with your writing and give you feedback on your text.
-        Developed by Hud Syafiq Herman and powered by LLMs 😁
+        Conversa is your friendly language teacher! It'll give you a hand with your writing and give you feedback on your text. Developed by Hud Syafiq Herman and powered by LLMs 😁
         """
     )
+
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancels and ends the conversation."""
+    user = update.message.from_user
+    logger.info("User %s canceled the conversation.", user.first_name)
+    await update.message.reply_text(
+        "Bye! I hope we can talk again some day.", reply_markup=ReplyKeyboardRemove()
+    )
+
+    return ConversationHandler.END
 
 
 def main() -> None:
     """Start the bot."""
     # Create the Application and pass it your bot's token.
-    application = Application.builder().token("revoked token").build()
+    application = Application.builder().token("token here").build()
 
-    # on different commands - answer in Telegram
-    application.add_handler(CommandHandler("start", start))
+    # adding the info command handlers (outside of main conversation flow)
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("about", about))
 
-    # on non command i.e message - echo the message on Telegram
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+    # add main conversation flow handler with states
+    main_conversation_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            SELECT_LANGUAGE: [
+                MessageHandler(filters.Regex("^(Spanish|French)$"), select_CEFR_level)
+            ],
+            # SELECT_CEFR_LEVEL: [
+            #     MessageHandler(
+            #         filters.Regex("^(A1|A2|B1|B2|C1|C2)$"), select_CEFR_level
+            #     )
+            # ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+    application.add_handler(main_conversation_handler)
 
     # Run the bot until the user presses Ctrl-C
     application.run_polling(allowed_updates=Update.ALL_TYPES)
