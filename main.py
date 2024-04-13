@@ -57,10 +57,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def select_CEFR_level(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    text = update.message.text
-
+    context["language"] = update.message.text
     await update.message.reply_text(
-        f"""You've picked {text}. Please choose the CEFR level you want to be assessed at.""",
+        f"""You've picked {context["language"]}. Please choose the CEFR level you want to be assessed at.""",
         reply_markup=ReplyKeyboardMarkup(
             [["A1", "A2", "B1"], ["B2", "C1", "C2"]],
             one_time_keyboard=True,
@@ -73,9 +72,13 @@ async def select_CEFR_level(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 async def issue_writing_prompt(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> int:
+    context["CEFR"] = update.message.text
     # TODO: Fetch prompt from service
-
-    return
+    await update.message.reply_text(
+        f"""You've picked {context["language"]} at {context["CEFR"]} level. Good luck!"""
+    )
+    await update.message.reply_text(f"""Here's your prompt: INSERT PROMPT HERE""")
+    return ConversationHandler.END  # placeholder state
 
 
 async def input_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
