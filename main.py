@@ -42,7 +42,7 @@ SELECT_LANGUAGE, SELECT_CEFR_LEVEL, INPUT_USER_TEXT, GRADE_INPUT_TEXT = range(4)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Initiate the main conversation flow when the command /start is issued."""
     await update.message.reply_text(
-        f"""Hi {update.effective_user.first_name}, I'm Conversa & I'm here to help you with your language learning!"""
+        f"""Hi {update.effective_user.first_name}, I'm Conversá & I'm here to help you with your language learning!"""
     )
 
     await update.message.reply_text(
@@ -57,9 +57,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def select_CEFR_level(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context["language"] = update.message.text
+    context.chat_data["language"] = update.message.text
     await update.message.reply_text(
-        f"""You've picked {context["language"]}. Please choose the CEFR level you want to be assessed at.""",
+        f"""You've picked {context.chat_data["language"]}. Please choose the CEFR level you want to be assessed at.""",
         reply_markup=ReplyKeyboardMarkup(
             [["A1", "A2", "B1"], ["B2", "C1", "C2"]],
             one_time_keyboard=True,
@@ -72,20 +72,23 @@ async def select_CEFR_level(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 async def issue_writing_prompt(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> int:
-    context["CEFR"] = update.message.text
+    context.chat_data["CEFR"] = update.message.text
     # TODO: Fetch prompt from service
     await update.message.reply_text(
-        f"""You've picked {context["language"]} at {context["CEFR"]} level. Good luck!"""
+        f"""You've picked {context.chat_data["language"]} at {context.chat_data["CEFR"]} level. Good luck!"""
     )
     await update.message.reply_text(f"""Here's your prompt: INSERT PROMPT HERE""")
-    return ConversationHandler.END  # placeholder state
+    return INPUT_USER_TEXT
 
 
-async def input_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Echo the user message."""
+async def grade_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Sends user text to LLM endpoint for grading."""
+    await update.message.reply_text("Great job! Let's see how you did. 🧐")
+
     await update.message.reply_text(
-        "I'm sorry, I don't understand that command. Please use /help to see the list of commands."
-    )
+        update.message.text
+    )  # TODO: send user text to LLM endpoint for grading
+    return ConversationHandler.END
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -93,17 +96,16 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text(
         """
     Use the following commands to interact with me:
-    /start - Start the bot.
-    /write - Get a writing prompt for Spanish or French at a desired CEFR level and get feedback on your text.
-        """
+    /start - Start the bot. 
+          """
     )
 
 
 async def about(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Give more information about Conversa to users."""
+    """Give more information about Conversá to users."""
     await update.message.reply_text(
         """
-        Conversa is your friendly language teacher! It'll give you a hand with your writing and give you feedback on your text. Developed by Hud Syafiq Herman and powered by LLMs 😁
+        Conversá is your friendly language teacher! It'll give you a hand with your writing and give you feedback on your text. Developed by Hud Syafiq Herman and powered by LLMs 😁
         """
     )
 
@@ -113,7 +115,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.message.from_user
     logger.info("User %s canceled the conversation.", user.first_name)
     await update.message.reply_text(
-        "Bye! I hope we can talk again some day.", reply_markup=ReplyKeyboardRemove()
+        "Bye, see you later!", reply_markup=ReplyKeyboardRemove()
     )
 
     return ConversationHandler.END
@@ -122,7 +124,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 def main() -> None:
     """Start the bot."""
     # Create the Application and pass it your bot's token.
-    application = Application.builder().token("token here").build()
+    application = Application.builder().token("insert token here").build()
 
     # adding the info command handlers (outside of main conversation flow)
     application.add_handler(CommandHandler("help", help_command))
@@ -135,11 +137,12 @@ def main() -> None:
             SELECT_LANGUAGE: [
                 MessageHandler(filters.Regex("^(Spanish|French)$"), select_CEFR_level)
             ],
-            # SELECT_CEFR_LEVEL: [
-            #     MessageHandler(
-            #         filters.Regex("^(A1|A2|B1|B2|C1|C2)$"), select_CEFR_level
-            #     )
-            # ],
+            SELECT_CEFR_LEVEL: [
+                MessageHandler(
+                    filters.Regex("^(A1|A2|B1|B2|C1|C2)$"), issue_writing_prompt
+                )
+            ],
+            INPUT_USER_TEXT: [MessageHandler(filters.TEXT, grade_user_text)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
